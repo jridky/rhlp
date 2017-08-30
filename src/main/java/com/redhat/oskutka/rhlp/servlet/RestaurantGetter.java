@@ -6,8 +6,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.lang.ref.SoftReference;
-import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLConnection;
+import java.text.ParseException;
 import java.util.Date;
 
 import javax.servlet.ServletException;
@@ -34,14 +35,22 @@ public abstract class RestaurantGetter extends HttpServlet {
     }
 
     protected String getMenuHTML() {
-    	if (isOldCache() || menuHtml == null || menuHtml.get() == null) {
-    		if (menuHtml != null) {
-    			menuHtml.clear();
-    		}
-    		menuHtml = new SoftReference<String>(getFreshMenuHTML());
-    		timeOfRetrieval = new Date();
+    	try {
+	    	if (isOldCache() || menuHtml == null || menuHtml.get() == null) {
+	    		if (menuHtml != null) {
+	    			menuHtml.clear();
+	    		}
+	    		menuHtml = new SoftReference<String>(getFreshMenuHTML());
+	    		timeOfRetrieval = new Date();
+	    	}
+			return menuHtml.get();
+		} catch (IOException e) {
+			log("Not able to get FreshMenuHTML for " + getUrl() + ": " + e.getMessage());
+			return "Cannot connect to the server";
+		} catch (ParseException e) {
+			log("Not able to parse FreshMenuHTML for " + getUrl() + ": " + e.getMessage());
+			return "Cannot parse the menu";
     	}
-		return menuHtml.get();
 	}
 
 	protected boolean isOldCache() {
@@ -60,25 +69,24 @@ public abstract class RestaurantGetter extends HttpServlet {
 		return html.replaceAll("<img[^>]*>", " ");
 	}
 	
-	protected String getFreshMenuHTML() {
+	protected String getFreshMenuHTML() throws IOException, ParseException {
         StringBuffer sb = new StringBuffer();
-        try
-        {
-            URL url = new URL(getUrl());
-            BufferedReader is = new BufferedReader(new InputStreamReader((InputStream) url.getContent(), getCharset()));
+            URLConnection connection = getConnection();
+            BufferedReader is = new BufferedReader(new InputStreamReader((InputStream) connection.getContent(), getCharset()));
             String line;
             while ((line = is.readLine()) != null) {
             	sb.append(line);
             }
-        }
-        catch (MalformedURLException e) {
-            e.printStackTrace();
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
         return stripImages() ? stripImages(sb.toString()) : sb.toString();
     }
+
+	protected URLConnection getConnection() throws IOException {
+		URL url = new URL(getUrl());
+		URLConnection connection = url.openConnection();
+		connection.setReadTimeout(20000);
+		connection.setConnectTimeout(20000);
+		return connection;
+	}
 
 	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
     	doGetAndPost(request, response);

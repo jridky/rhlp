@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.text.ParseException;
 
 import javax.servlet.annotation.WebServlet;
 
@@ -25,12 +26,15 @@ public class Rebio extends ParsingRestaurantGetter {
 		try {
 			URL pageUrl = new URL("http://www.rebio.cz/Rebio-Park/Nase-nabidka/gn-ha.folder.aspx");
 			BufferedReader is = new BufferedReader(new InputStreamReader((InputStream) pageUrl.getContent(), getCharset()));
+			String previousLine = "";
 			String line;
 			while ((line = is.readLine()) != null) {
 				if (line.contains("Jídelní lístek Rebio Park")) {
-					pdfUrl = "http://www.rebio.cz/Rebio-Park/Nase-nabidka/Jidelni-listek-Rebio-Park/" + line.replaceAll(".*href=\"([^\"]*)\".*", "$1");
+				    String search = previousLine + line;
+					pdfUrl = "http://www.rebio.cz/Rebio-Park/Nase-nabidka/" + search.replaceAll(".*href=\"([^\"]*)\".*", "$1");
 					break;
 				}
+				previousLine = line;
 			}
 		} catch (MalformedURLException e) {
 			e.printStackTrace();
@@ -53,7 +57,7 @@ public class Rebio extends ParsingRestaurantGetter {
 	protected String getDayClosingTag() {
 		return "";
 	}
-	protected String getFreshMenuHTML() {
+	protected String getFreshMenuHTML() throws ParseException {
 		try
 		{
 			StringBuffer result = new StringBuffer();
@@ -62,15 +66,17 @@ public class Rebio extends ParsingRestaurantGetter {
 			parser.parse();
 			PDFTextStripper stripper = new PDFTextStripper();
 			stripper.setSortByPosition(true);
-			String parsedText = stripper.getText(new PDDocument(parser.getDocument()));
-			boolean wasEmptyLine = true;
-			for (String line: parseHTML(parsedText).split("\n")) {
-				if (!line.matches("^ *(Saláty, dezerty|Obsahuje Basic menu|Informace o alergenech).*")) {
-					line = line.trim();
-					if (line.length() > 0 || !wasEmptyLine) {
-						result.append(line.trim() + "\n");
+			try (PDDocument pdDoc = new PDDocument(parser.getDocument())) {
+				String parsedText = stripper.getText(pdDoc);
+				boolean wasEmptyLine = true;
+				for (String line: parseHTML(parsedText).split("\n")) {
+					if (!line.matches("^ *(Saláty, dezerty|Obsahuje Basic menu|Informace o alergenech).*")) {
+						line = line.trim();
+						if (line.length() > 0 || !wasEmptyLine) {
+							result.append(line.trim() + "\n");
+						}
+						wasEmptyLine = (line.length() == 0);
 					}
-					wasEmptyLine = (line.length() == 0);
 				}
 			}
 			return "<pre>" + result.toString() + "</pre>";
